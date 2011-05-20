@@ -94,8 +94,8 @@ broken down into a paginated set of sitemaps per the protocol:
         </sitemap>
     </sitemapindex>
 
-To add your own sitemap URLs at runtime, resolve `ISitemapService' or use `SitemapService'
-and call the `AddNode` method, passing in a `SitemapNode' instance:
+To add your own sitemap URLs at runtime, resolve `ISitemapService` or use `SitemapService`
+and call the `AddNode` method, passing in a `SitemapNode` instance:
 
     var service = ServiceLocator.Current.GetInstance<ISitemapService>();
     service.AddNode(new SitemapNode("http://unicorns.com") { Frequency = Frequency.Always, Priority = 1.0 });
