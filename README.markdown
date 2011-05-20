@@ -9,7 +9,7 @@
 
 * Supports static and dynamic sitemap tagging
 * Provides browser and client caching mechanisms
-* Automatically adheres to the (Sitemaps protocol)[http://sitemaps.org]
+* Automatically adheres to the [Sitemaps protocol](http://sitemaps.org)
 * Understands ASP.NET MVC, so it obeys areas and action names, resolves method constraints, etc.
 
 ### Usage
