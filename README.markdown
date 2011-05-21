@@ -81,15 +81,15 @@ broken down into a paginated set of sitemaps per the protocol:
     <?xml version="1.0" encoding="utf-8"?>
     <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
         <sitemap>
-            <loc>http://localhost:9090/sitemap/?page=0</loc>
-            <lastmod>2011-05-19T22:57:42</lastmod>
-        </sitemap>
-        <sitemap>
             <loc>http://localhost:9090/sitemap/?page=1</loc>
             <lastmod>2011-05-19T22:57:42</lastmod>
         </sitemap>
         <sitemap>
             <loc>http://localhost:9090/sitemap/?page=2</loc>
+            <lastmod>2011-05-19T22:57:42</lastmod>
+        </sitemap>
+        <sitemap>
+            <loc>http://localhost:9090/sitemap/?page=3</loc>
             <lastmod>2011-05-19T22:57:42</lastmod>
         </sitemap>
     </sitemapindex>
