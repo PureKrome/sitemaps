@@ -219,7 +219,7 @@ namespace Sitemaps
         private static string GetUrl(RequestContext request, RouteValueDictionary values)
         {
             var routes = RouteTable.Routes;
-            var data = routes.GetVirtualPathForArea(request, values);
+            var data = routes.GetVirtualPath(request, values);
 
             if(data == null)
             {
