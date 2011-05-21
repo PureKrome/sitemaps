@@ -221,6 +221,11 @@ namespace Sitemaps
             var routes = RouteTable.Routes;
             var data = routes.GetVirtualPathForArea(request, values);
 
+            if(data == null)
+            {
+                return null;
+            }
+
             var baseUrl = request.HttpContext.Request.Url;
             var relativeUrl = data.VirtualPath;
             

@@ -9,15 +9,17 @@ namespace Sitemaps
     {
         public static bool MatchesRouteWithHttpGet(this string url)
         {
-            var fakeContext = new FakeHttpContext(new Uri(url).AbsolutePath, "GET");
+            var path = VirtualPathUtility.ToAppRelative(new Uri(url).AbsolutePath);
+            var fakeContext = new FakeHttpContext(path, "GET");
             using(RouteTable.Routes.GetReadLock())
             {
                 return RouteTable.Routes.Aggregate(false, (current, route) =>
                                                               {
-                                                                  if (!fakeContext.Request.AppRelativeCurrentExecutionFilePath.Equals("/"))
+                                                                  if (!fakeContext.Request.AppRelativeCurrentExecutionFilePath.Equals("~/"))
                                                                   {
                                                                       var routeData = route.GetRouteData(fakeContext);
-                                                                      return current | routeData != null;
+                                                                      var matches = routeData != null;
+                                                                      return current | matches;
                                                                   }
                                                                   return true;
                                                               });    
