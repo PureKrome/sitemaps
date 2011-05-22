@@ -75,7 +75,7 @@ The controller action decorations above would produce the following XML sitemap:
         </url>
     </urlset>
 
-If your sitemap contains more URLs than the `SitemapService.PageSize', it is automatically
+If your sitemap contains more URLs than the `SitemapService.PageSize`, it is automatically
 broken down into a paginated set of sitemaps per the protocol:
     
     <?xml version="1.0" encoding="utf-8"?>
