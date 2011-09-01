@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Text;
+using System.Web;
 using System.Web.Mvc;
 using System.Web.Routing;
 using System.Xml.Linq;
@@ -13,10 +15,13 @@ namespace Sitemaps
 {
     public class SitemapService : ISitemapService
     {
-        private static readonly ICollection<SitemapNode> _staticNodes;
-        private static readonly ICollection<SitemapNode> _dynamicNodes;
+        private static readonly IDictionary<string, ICollection<SitemapNode>> StaticNodes;
+        private static readonly IDictionary<string, ICollection<SitemapNode>> DynamicNodes;
+        private static readonly object Sync = new object();
+        private const string DefaultSitemapName = "TheSiteMap";
+        private const string ContentType = "application/xml";
+        private const string IfNoneMatchHeader = "If-None-Match";
 
-        private static readonly object _sync = new object();
 
         public static int PageSize { get; set; }
 
@@ -25,8 +30,8 @@ namespace Sitemaps
         static SitemapService()
         {
             PageSize = 125;
-            _staticNodes = new List<SitemapNode>(0);
-            _dynamicNodes = new List<SitemapNode>(0);
+            StaticNodes = new Dictionary<string, ICollection<SitemapNode>>();
+            DynamicNodes = new Dictionary<string, ICollection<SitemapNode>>();
         }
 
         public static void Register()
@@ -36,31 +41,63 @@ namespace Sitemaps
 
         public static void Register(string url)
         {
+            Register(DefaultSitemapName, url, "sitemap", "index");
+        }
+
+        public static void Register(string name, string url, string controller, string action)
+        {
+            Register(name, url, controller, action, null, null); 
+        }
+
+        // We can now register multiple sitemaps.
+        public static void Register(string name, string url, string controller, string action, object constraints, string[] namespaces)
+        {
             var routes = RouteTable.Routes;
 
             using (routes.GetWriteLock())
             {
-                routes.MapRoute("sitemaps", url, new { controller = "Sitemap", action = "Index" });
+                routes.MapRoute(name, url, new { controller, action }, constraints, namespaces);
             }
         }
 
-        public string GetSitemapXml(ControllerContext context, int? page, int? count)
+        // We can now register multiple sitemaps.
+        public static void Register(string name, string url, object defaults, object constraints, string[] namespaces)
+        {
+            var routes = RouteTable.Routes;
+                       
+            using (routes.GetWriteLock())
+            {
+                routes.MapRoute(name, url, defaults, constraints, namespaces);
+            }
+        }
+
+        public string GetSitemapXml(string siteMapName, ControllerContext context, int? page, int? count)
         {
             XElement root;
             XNamespace xmlns = SitemapsNamespace;
 
-            var nodes = GetSitemapNodes(context, page, count.HasValue ? count.Value : PageSize);
+            // Links for the current page.
+            var nodes = GetSitemapNodes(siteMapName, context, page, count.HasValue ? count.Value : PageSize);
             
+            // Do we have more links than the current page AND we haven't specified what page to show?
+            // If yes, then we need to show the main sitemap index page.
             if (nodes.Count() < nodes.TotalCount && !page.HasValue)
             {
                 root = new XElement(xmlns + "sitemapindex");
 
                 var pages = Math.Ceiling(nodes.TotalCount / (double)PageSize);
 
-                var timestamp = nodes.First().LastModified;
-
                 for (var i = 0; i < pages; i++)
                 {
+                    // Each sitemap loc element needs to list the most recent modified item.
+                    // As such, we need to keep loading in the nodes, for this page.
+                    var pagedNodes = GetSitemapNodes(siteMapName, context, i + 1, count.HasValue ? count.Value : PageSize);
+                    
+                    // Find the most recent node, from this list.
+                    var timestamp = (from x in pagedNodes
+                                     orderby x.LastModified descending
+                                     select x.LastModified).First();
+    
                     root.Add(
                     new XElement(xmlns + "sitemap",
                         new XElement(xmlns + "loc", Uri.EscapeUriString(string.Format("{0}/?page={1}", GetUrl(context), i + 1))),
@@ -95,34 +132,60 @@ namespace Sitemaps
             }
         }
 
-        public IPagedEnumerable<SitemapNode> GetSitemapNodes(ControllerContext context, int? page, int? count)
+        public IPagedEnumerable<SitemapNode> GetSitemapNodes(string siteMapName, ControllerContext context, int? page, int? count)
         {
-            var nodes = CacheOrGetStaticNodes(context);
+            var nodes = CacheOrGetStaticNodes(context, siteMapName);
 
             var source = new List<SitemapNode>(nodes);
-            source.AddRange(_dynamicNodes);
+            source.AddRange(DynamicNodes[siteMapName]);
             
             return new PagedQueryable<SitemapNode>(source.AsQueryable(), page, count);
         }
 
         public void AddNode(params SitemapNode[] nodes)
         {
+            AddNode(DefaultSitemapName, nodes);
+        }
+
+        public void AddNode(string siteMapName, params SitemapNode[] nodes)
+        {
             AddNode(nodes.ToList());
         }
 
         public void AddNode(IEnumerable<SitemapNode> nodes)
         {
+            AddNode(nodes, DefaultSitemapName);
+        }
+
+        public void AddNode(IEnumerable<SitemapNode> nodes, string siteMapName)
+        {
+            // Do we have any nodes, for the key?
+            if (!DynamicNodes.ContainsKey(siteMapName))
+            {
+                DynamicNodes.Add(siteMapName, new List<SitemapNode>());
+            }
+            else
+            {
+                DynamicNodes[siteMapName].Clear();
+            }
+
             foreach(var node in nodes)
             {
-                _dynamicNodes.Add(node);
+                DynamicNodes[siteMapName].Add(node);
             }
         }
 
-        private IEnumerable<SitemapNode> CacheOrGetStaticNodes(ControllerContext context)
+        private IEnumerable<SitemapNode> CacheOrGetStaticNodes(ControllerContext context, string siteMapName)
         {
-            lock (_sync)
+            lock (Sync)
             {
-                if (_staticNodes.Count == 0)
+                if (!StaticNodes.ContainsKey(siteMapName))
+                {
+                    StaticNodes.Add(siteMapName, new List<SitemapNode>());
+                }
+
+                var staticNodes = StaticNodes[siteMapName];
+                if (staticNodes.Count == 0)
                 {
                     var manifest = GetStaticManifest();
                     var timestamp = DateTime.UtcNow;
@@ -140,17 +203,17 @@ namespace Sitemaps
 
                     foreach (var node in nodes.Where(n => Uri.IsWellFormedUriString(n.Url, UriKind.Absolute) && n.Url.MatchesRouteWithHttpGet()))
                     {
-                        _staticNodes.Add(node);
+                        StaticNodes[siteMapName].Add(node);
                     }
                 }
 
-                return _staticNodes;
+                return StaticNodes[siteMapName];
             }
         }
 
         private static IEnumerable<KeyValuePair<Type, List<Tuple<string, SitemapAttribute>>>> GetStaticManifest()
         {
-            lock (_sync)
+            lock (Sync)
             {
                 var manifest = new Dictionary<Type, List<Tuple<string, SitemapAttribute>>>(0);
 
@@ -233,6 +296,72 @@ namespace Sitemaps
                    (request.HttpContext.Request != null && baseUrl != null)
                        ? new Uri(baseUrl, relativeUrl).AbsoluteUri
                        : null;
+        }
+
+        public static ActionResult RenderSiteMap(ControllerContext controllerContext, int? page, int? count)
+        {
+            return RenderSiteMap(DefaultSitemapName, controllerContext, page, count);
+        }
+
+        public static ActionResult RenderSiteMap(string siteMapName, ControllerContext controllerContext, int? page, int? count)
+        {
+            ISitemapService sitemapService = new SitemapService();
+            var content = sitemapService.GetSitemapXml(siteMapName, controllerContext, page, count);
+            var etag = Md5(content);
+
+            if (BrowserIsRequestingFileIdentifiedBy(controllerContext.RequestContext.HttpContext.Request, etag))
+            {
+                return NotModified(controllerContext.HttpContext.Response);
+            }
+
+            var cache = controllerContext.HttpContext.Response.Cache;
+            cache.SetCacheability(HttpCacheability.Public);
+            cache.SetETag(etag);
+
+            return new ContentResult
+                       {
+                           Content = content, 
+                           ContentEncoding = Encoding.UTF8, 
+                           ContentType = ContentType
+                       };
+        }
+
+        private static bool BrowserIsRequestingFileIdentifiedBy(HttpRequestBase request, string etag)
+        {
+            if (request.Headers[IfNoneMatchHeader] == null)
+            {
+                return false;
+            }
+
+            var ifNoneMatch = request.Headers[IfNoneMatchHeader];
+            return ifNoneMatch.Equals(etag, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string Md5(string input)
+        {
+            var sb = new StringBuilder();
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
+                foreach (var hex in hash)
+                {
+                    sb.Append(hex.ToString("x2"));
+                }
+                return sb.ToString();
+            }
+        }
+
+        public static ActionResult NotModified(HttpResponseBase responseBase)
+        {
+            return StopWith(responseBase, HttpStatusCode.NotModified);
+        }
+
+        private static ActionResult StopWith(HttpResponseBase responseBase, HttpStatusCode statusCode)
+        {
+            responseBase.StatusCode = (int)statusCode;
+            responseBase.SuppressContent = true;
+            responseBase.TrySkipIisCustomErrors = true;
+            return null;
         }
     }
 }
