@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>Paging</id>
+    <version>1.0.1</version>
+    <authors>Daniel Crenna</authors>
+    <owners>Daniel Crenna</owners>
+    <licenseUrl>https://github.com/danielcrenna/dapper-flint/blob/master/LICENSE.md</licenseUrl>
+    <projectUrl>http://github.com/danielcrenna/dapper-flint</projectUrl>
+    <iconUrl>http://apitize.com.s3.amazonaws.com/logo_depot.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>A smart paging library for .NET queryables and enumerables.</description>
+    <summary>A smart paging library for .NET queryables and enumerables.</summary>
+    <language>en-US</language>
+    <tags>paging data queryable enumerable</tags>
+  </metadata>
+</package>
